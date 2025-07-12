@@ -141,6 +141,9 @@ func main() {
 	// Proxy files from S3, if not save them.
 	router.GET("/proxy/:fileId", proxyFile)
 
+	// Proxy files from S3, if not save them.
+	router.DELETE("/proxy/:fileId", deleteProxyFile)
+
 	router.GET("/", func(c *gin.Context) {
 		c.String(200, "e6-cache is running. Use this as the instance in your preffered client.\n"+
 			"Make sure to set the base URL in your client to: "+PROXY_URL+"\n"+

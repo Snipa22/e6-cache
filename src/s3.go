@@ -140,3 +140,14 @@ func (s *S3Service) DoesFileExistInS3(ctx context.Context, filename string) (boo
 
 	return true, nil
 }
+
+func (s *S3Service) DeleteFile(ctx context.Context, filename string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucketName),
+		Key:    aws.String(filename),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete file '%s' from S3 bucket '%s': %w", filename, s.bucketName, err)
+	}
+	return nil
+}

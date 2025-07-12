@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -276,6 +275,48 @@ func proxyAndTransform(c *gin.Context) {
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
 }
 
+func deleteProxyFile(c *gin.Context) {
+	fileID := c.Param("fileId")
+	sig := c.Query("sig")
+
+	if sig == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing signature", "ok": false})
+		return
+	}
+
+	url, err := base64.URLEncoding.DecodeString(fileID)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID", "ok": false})
+		return
+	}
+
+	if !Signer.Verify(string(url), sig) {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid signature", "ok": false})
+		return
+	}
+
+	// get the filename from the fileID
+	re := regexp.MustCompile(`/data/(.*)`)
+	matches := re.FindStringSubmatch(string(url))
+
+	CleanFileID := matches[1]
+
+	fileExists, err := S3.DoesFileExistInS3(c, string(CleanFileID))
+	c.Header("Cache-Control", "public, max-age="+strconv.Itoa(int(maxCacheAge.Seconds())))
+	c.Header("Expires", time.Now().Add(time.Duration(maxCacheAge)*time.Second).Format(http.TimeFormat))
+
+	if fileExists && err == nil {
+		logging.Info("Deleting from S3: %v", string(CleanFileID))
+		if err := S3.DeleteFile(c, string(CleanFileID)); err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete file", "ok": false})
+			return
+		}
+	} else {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "File not found", "ok": false})
+	}
+	c.JSON(200, gin.H{"ok": true})
+}
+
 func proxyFile(c *gin.Context) {
 	fileID := c.Param("fileId")
 	sig := c.Query("sig")
@@ -429,14 +470,5 @@ func ProcessPost(c *gin.Context, post *Post) {
 }
 
 func setUseragent(username string, req *http.Request) {
-	var useragent string
-	if len(username) < 1 { // if it's too small, then forget about it
-		useragent = useragentBase
-		req.Header.Set("User-Agent", useragent)
-		return
-	}
-
-	useragent = fmt.Sprintf("%s (Request made on behalf of %s)", useragentBase, username)
-
-	req.Header.Set("User-Agent", useragent)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0")
 }
